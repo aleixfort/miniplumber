@@ -17,7 +17,7 @@ result = records > (
 ---
 
 ## Quick reference
-
+### Core
 ```
 value > pipe               fire pipeline, return raw value
 
@@ -32,7 +32,7 @@ identity                   pass value through unchanged — use in forks
 All of  / // @ +  are multiplicative — same precedence, left-to-right.
 >  is lower precedence    — pipeline always builds fully before firing.
 ```
-
+### Utils
 ```
 flatten                    one level of nesting → flat list
 flatten_deep               any depth → flat list
