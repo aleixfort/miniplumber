@@ -40,8 +40,10 @@ class Pipeline:
 
     def __truediv__(self, other):
         """/  : pass whole value to func  |  compose two pipelines"""
-        if isinstance(other, Pipeline): return Pipeline(self._steps + other._steps)
-        if callable(other):             return self._add('pass', other)
+        if isinstance(other, Pipeline): 
+            return Pipeline(self._steps + other._steps)
+        if callable(other):
+            return self._add('pass', other)
         raise TypeError(f"/ expects a callable or Pipeline — got {type(other).__name__}")
 
     def __floordiv__(self, func):
@@ -85,5 +87,9 @@ class Pipeline:
         return f"Pipeline({list(self._steps)})"
 
 
+def identity(value):
+    """Does nothing. Useful for pipeline merging and forking. See README"""
+    return value
+
 pipe     = Pipeline()
-identity = lambda value: value
+

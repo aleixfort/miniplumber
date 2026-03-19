@@ -33,8 +33,10 @@ def flatten_deep(value):
     """
     def _flat(v):
         for x in v:
-            if isinstance(x, (list, tuple)): yield from _flat(x)
-            else: yield x
+            if isinstance(x, (list, tuple)): 
+                yield from _flat(x)
+            else: 
+                yield x
     return list(_flat(value))
 
 
@@ -150,7 +152,8 @@ def matching(pattern):
         pipe @ matching(r"^\\d+$")
     """
     import re
-    if isinstance(pattern, str): return lambda x: pattern in x
+    if isinstance(pattern, str): 
+        return lambda x: pattern in x
     return lambda x: bool(re.search(pattern, x))
 
 def having(**kwargs):
@@ -166,10 +169,10 @@ def debug(label=""):
     """Print value mid-pipeline and pass through unchanged.
         pipe / debug("after flatten") // str.upper
     """
-    def tap(value):
+    def _debug(value):
         print(f"[{label}]  {value}" if label else str(value))
         return value
-    return tap
+    return _debug
 
 def tap(func):
     """Call func as side effect, pass value through unchanged.
@@ -201,8 +204,10 @@ def safe(fallback):
     """
     def wrap(func):
         def guarded(value):
-            try:    return func(value)
-            except: return fallback
+            try:  
+                return func(value)
+            except Exception:
+                return fallback
         guarded.__name__ = getattr(func, '__name__', repr(func))
         return guarded
     return wrap
