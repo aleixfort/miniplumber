@@ -1,136 +1,63 @@
 # miniplumber
 
-A minimal functional pipeline for Python. Build lazy, reusable pipelines with a small set of intuitive operators. Fire them with `>`.
+A minimal functional pipeline for Python.
 
 ```python
-from miniplumber import pipe, flatten, field, sort, having
+from miniplumber import pipe, sort, field
 
-result = records > (
-    pipe
-    @ having(status="active")
-    // field("name")
-    / sort()
-    / " ".join
-)
+scores > pipe // field("score") / sort(reverse=True)
+
+words = sentences >  pipe // str.split / flatten // str.lower @ str.isalpha / unique / sort()
+
+
 ```
 
 ---
 
 ## Quick reference
-### Core
+
 ```
 value > pipe               fire pipeline, return raw value
 
 /   func                   pass whole value to func
-/   pipeline               compose two pipelines (sequential)
+/   pipeline               compose two pipelines sequentially
 //  func                   map over each element
 @   func                   filter — keep where func(x) is truthy
-+   pipeline               fork — always inside parens:  / (a + b) /
++   pipeline               fork — always inside parens: / (a + b) /
 
-All of  / // @ +  are multiplicative — same precedence, left-to-right.
->  is lower precedence    — pipeline always builds fully before firing.
-```
-### Utils
-```
-flatten                    one level of nesting → flat list
-flatten_deep               any depth → flat list
-
-sort(key, reverse)         sorted() with args
-unique                     deduplicate preserving order
-compact                    remove falsy values
-take(n)                    first n elements
-drop(n)                    skip first n elements
-chunk(n)                   split into n-sized groups
-window(n)                  sliding windows of size n
-group(key)                 group into dict by key function
-
-field(key, default)        extract dict key            — use with //
-attr(name, default)        extract object attribute    — use with //
-
-equals(value)              predicate — x == value
-instance(type)             predicate — isinstance check
-between(lo, hi)            predicate — range check
-nonzero                    predicate — truthy values
-matching(pattern)          predicate — substring or regex
-having(**kwargs)           predicate — dict key/value match
-
-debug(label)               print and pass through      — use with /
-tap(func)                  side effect and pass through — use with /
-capture(store, key)        snapshot mid-pipeline value — use with /
-
-safe(fallback)(func)       return fallback on exception
+All of  / // @ +  share the same precedence — left-to-right, no exceptions.
+>  is lower precedence — pipeline always builds fully before firing.
 ```
 
 ---
 
-## Why miniplumber?
-
-Python has no native pipe operator. The workarounds are either verbose (nested function calls, step-by-step assignment) or fragile (operator precedence traps). miniplumber solves this with three design decisions:
-
-**One.** All pipeline operators (`/` `//` `@` `+`) share the same precedence level. They always evaluate left-to-right, with no surprises.
-
-**Two.** The pipeline is lazy. Nothing executes until `>` fires it. This means pipelines are values — you can name them, compose them, pass them around, and reuse them.
-
-**Three.** The operator set is minimal and maps directly onto map/filter/reduce. Everything else is a plain function.
-
----
-
-## Installation
-
-```bash
-pip install miniplumber
-# or just copy the pype/ folder into your project
-```
-
-```python
-from miniplumber import pipe                               # minimum
-from miniplumber import pipe, flatten, sort, debug         # with utilities
-from miniplumber import *                                  # everything
-```
-
-### Package structure
-
-```
-miniplumber/
-    __init__.py     # re-exports everything
-    core.py         # Pipeline class and pipe sentinel — zero dependencies
-    utils.py        # flatten, sort, field, debug, and friends
-```
-
-`core.py` is self-contained. If you only want the pipeline with no utilities, copy just that file.
-
----
-
-## Mental model
+## Philosophy
 
 Every data pipeline is a combination of three operations:
 
 ```
-//   map     — transform each element     (same length)
-@    filter  — select elements            (shorter or equal)
-/    reduce  — collapse to single value   (one result)
+//   map     — transform each element       (same number of inputs in and out)
+@    filter  — select elements              (less or equal)
+/    pass    — send the whole value to a function as-is
 ```
 
-miniplumber gives them clean operator syntax. Anything else — flatten, sort, group, debug — is a plain function you pass with `/`.
-
-### List mode
-
-The pipeline stays in list mode throughout. `//` and `@` always receive and return lists. Only `/` can change shape — intentionally, when you want to aggregate or reduce:
+`/` does not imply a single output. It passes whatever you have — a list, a dict, a string — to the next function whole. The function decides what comes out:
 
 ```python
-pipe // transform    # list → list  (same length)
-pipe @  predicate    # list → list  (shorter)
-pipe /  aggregate    # list → value (intentional exit from list mode)
+pipe / sorted          # list → list (reordered)
+pipe / len             # list → int  (counted)
+pipe / " ".join        # list → str  (joined)
 ```
 
-This means you never have to think about what shape the value is mid-pipeline. It's always a list until you decide otherwise.
+miniplumber gives these three operations clean operator syntax and one rule: **all operators share the same precedence, always left-to-right**. No brackets to manage precedence. No surprises.
+
+Everything else — flatten, sort, group, twist — is a plain function you pass with `/` or `//`. The library is the glue, not the logic. Any function that takes one value and returns one value is a valid step. No wrappers, no base classes, no registration.
+
+The pipeline is lazy. Nothing executes until `>` fires it. This means pipelines are values — name them, compose them, pass them around, reuse them anywhere.
 
 ---
 
 ## Operators
-
-All of `/ // @ +` are multiplicative — **same precedence, always left-to-right**.
-`>` is lower precedence — the pipeline **always builds fully before firing**.
 
 ### `/` — pass
 
@@ -138,8 +65,8 @@ Pass the whole value to a function:
 
 ```python
 ["hello", "world"] > pipe / len          # → 2
-["hello", "world"] > pipe / sorted       # → ["hello", "world"]
 ["hello", "world"] > pipe / " ".join     # → "hello world"
+["hello", "world"] > pipe / sorted       # → ["hello", "world"]
 ```
 
 Compose two named pipelines sequentially:
@@ -147,50 +74,50 @@ Compose two named pipelines sequentially:
 ```python
 clean   = pipe // str.strip // str.lower
 shout   = pipe // str.upper
-
-process = clean / shout                  # clean then shout
+process = clean / shout
 ```
 
 ### `//` — map
 
-Apply a function to each element. One in, one out. List stays same length:
+Apply a function to each element. Always same length in, same length out:
 
 ```python
-def double(x): return x * 2
-
-["hello", "world"] > pipe // str.upper   # → ["HELLO", "WORLD"]
-["hello", "world"] > pipe // len         # → [5, 5]
 [1, 2, 3]          > pipe // double      # → [2, 4, 6]
+["hello", "world"] > pipe // len         # → [5, 5]
+["hello", "world"] > pipe // str.upper   # → ["HELLO", "WORLD"]
+```
+
+`//` is polymorphic — it works on dicts too, mapping over values and preserving keys:
+
+```python
+{"a": 1, "b": 2, "c": 3} > pipe // double
+# → {"a": 2, "b": 4, "c": 6}
 ```
 
 ### `@` — filter
 
-Keep elements where `func(x)` is truthy. One rule, no exceptions:
+Keep elements where `func(x)` is truthy:
 
 ```python
-def is_long(w):  return len(w) > 3
-def is_adult(n): return n >= 18
-
-pipe @ is_long               # keep long words
-pipe @ str.isupper           # keep uppercase strings
-pipe @ nonzero               # keep truthy values
-pipe @ instance(str)         # keep strings
-pipe @ equals("cat")         # keep elements == "cat"
-pipe @ between(18, 65)       # keep numbers in range
-pipe @ matching("ing")       # keep elements containing substring
-pipe @ having(role="admin")  # keep dicts matching key/value
+[3, 0, 1, -1] > pipe @ bool              # → [3, 1]
+words         > pipe @ having(pos="noun")# → [only nouns]
 ```
 
-Any callable that returns truthy/falsy works — `def` functions, built-ins, predicates from utils.
+`@` also works on scalars — returns the value if truthy, `None` if not:
+
+```python
+3 > pipe @ bool    # → 3
+0 > pipe @ bool    # → None
+```
 
 ### `+` — fork
 
-Split one input into two or more parallel pipelines. Always wrap in parentheses:
+Split one input into parallel pipelines. Always wrap in parentheses:
 
 ```python
 import statistics
 
-stats = data > pipe / (
+data > pipe / (
     pipe / statistics.mean   +
     pipe / statistics.median +
     pipe / statistics.stdev
@@ -198,10 +125,10 @@ stats = data > pipe / (
 # → [mean, median, stdev]
 ```
 
-Fork then converge — the next `/` step receives the list of results:
+Fork then merge — the step after `)` receives the list of branch results:
 
 ```python
-"photo.jpg" > load / preprocess / (edges + blurred) / np.hstack / save("compare.jpg")
+"photo.jpg" > load / preproc / (edges + blurred) / np.hstack / save("compare.jpg")
 ```
 
 ### `>` — fire
@@ -214,197 +141,69 @@ result = data > pipe // str.upper / " ".join
 
 ---
 
-## Writing functions for pype
-
-### Plain functions
-
-Any `def` function works as a pipeline step — no wrappers, no inheritance. If it takes a value and returns a value, it plugs in:
-
-```python
-def remove_stopwords(words):
-    stopwords = {"the", "a", "an", "is"}
-    return [w for w in words if w not in stopwords]
-
-def score(text):
-    return len(text) * 0.1
-
-result = sentences > (
-    pipe
-    // str.split
-    / flatten
-    / remove_stopwords
-    // score
-)
-```
-
-### Configurable functions
-
-Pipeline steps always receive exactly one argument — the current value. But sometimes a step also needs configuration: a path, a threshold, a size. The solution is a **closure** — an outer function that captures the configuration and returns the actual step:
-
-```python
-def save(path):        # called at build time — captures path
-    def _save(img):    # called at fire time  — receives the value
-        cv2.imwrite(path, img)
-        return img
-    return _save
-```
-
-When you write `pipe / save("output.jpg")`, Python calls `save("output.jpg")` immediately and hands `_save` — already knowing its path — to the pipeline as a step.
-
-This pattern appears anywhere a step needs configuration:
-
-```python
-def blur(radius):
-    def _blur(img): return cv2.GaussianBlur(img, (radius, radius), 0)
-    return _blur
-
-def prefix(text):
-    def _prefix(s): return text + s
-    return _prefix
-
-def above(threshold):
-    def _above(n): return n > threshold
-    return _above
-
-pipe / blur(5) / save("out.jpg")    # images
-pipe // prefix("Mr. ")              # strings
-pipe @ above(100)                   # numbers
-```
-
-Think of it as pre-loading an argument. The outer call locks in the configuration; the inner function is what the pipeline actually runs. All utils that take arguments — `sort(key)`, `take(n)`, `field(key)`, `matching(pattern)` — follow exactly this pattern.
-
----
-
 ## Named pipelines
 
 Pipelines are values. Name them, reuse them, compose them with `/`:
 
 ```python
-def has_vowel(word): return any(v in word for v in "aeiou")
-
 tokenize = pipe // str.split / flatten
 clean    = pipe // str.strip // str.lower
-voiced   = pipe @ has_vowel
 join     = pipe / " ".join
 
-# compose sub-pipelines into larger ones
-process  = tokenize / clean / voiced / join
+process  = tokenize / clean / join
 
-# reuse anywhere
-result_a = ["  Hello World  "] > process
-result_b = ["  FOO BAR BAZ  "] > process
-
-# test each piece independently
-["  Hello  "] > clean    # → ["hello"]
-["hello"]     > voiced   # → ["hello"]
+["  Hello World  "] > process    # → "hello world"
+["  FOO BAR BAZ  "] > process    # → "foo bar baz"
 ```
 
-Named pipelines are the core of the pype pattern. Write small focused functions, wire them into named pipelines, compose those pipelines into larger ones. The pipeline is just the glue.
+Test each piece independently. Compose freely.
 
 ---
 
-## Forking and merging
+## Writing steps
 
-`+` splits one value into two or more parallel pipelines. The fork point determines what each branch receives — everything before the `(` has already run.
-
-### Basic fork
+Any `def` function works as a pipeline step:
 
 ```python
-import statistics
-from miniplumber import pipe
+def remove_stopwords(words):
+    stopwords = {"the", "a", "an"}
+    return [w for w in words if w not in stopwords]
 
-result = data > pipe / (
-    pipe / statistics.mean   +
-    pipe / statistics.median +
-    pipe / statistics.stdev
-)
-# → [mean, median, stdev]
+sentences > pipe // str.split / flatten / remove_stopwords
 ```
 
-### Fork then merge
-
-The step after `)` receives the list of branch results as a whole, so any function that takes a list can merge them:
+When a step needs configuration, use a closure. The outer call captures configuration at build time; the inner function receives the value at fire time:
 
 ```python
-result = data > pipe / (branch_a + branch_b) / merge_func
+def blur(sigma):
+    def _blur(img):
+        k = max(3, int(6 * sigma) | 1)
+        return cv2.GaussianBlur(img, (k, k), sigma)
+    return _blur
+
+def above(threshold):
+    return lambda x: x > threshold
+
+pipe / blur(5.0)      # pre-configured step
+pipe @ above(100)     # pre-configured predicate
 ```
-
-```python
-# side by side images
-"photo.jpg" > load / preproc / (edges + blurred) / np.hstack / save("compare.jpg")
-
-# combine stats into a dict
-def as_dict(results):
-    keys = ["mean", "median", "stdev"]
-    return dict(zip(keys, results))
-
-stats = data > pipe / (
-    pipe / statistics.mean   +
-    pipe / statistics.median +
-    pipe / statistics.stdev
-) / as_dict
-# → {"mean": 5.0, "median": 4.5, "stdev": 2.0}
-```
-
-### Preserving a value across a transformation
-
-pipe can also pas the value through unchanged. Use it in a fork to preserve the value at the fork point while transforming it in the other branch:
-
-```python
-from miniplumber import pipe
-
-branch = pipe / step2 / step3 / step4
-
-result = data > pipe / step1 / (branch + pipe) / merge
-#                                          ↑ value after step1, untouched
-```
-
-Since the fork point is where you place the parentheses, you control exactly which version of the value gets preserved:
-
-```python
-# preserve original input
-result = data > (branch + pipe) / merge
-
-# preserve value after step1
-result = data > pipe / step1 / (branch + pipe) / merge
-
-# preserve value after step2
-result = data > pipe / step1 / step2 / (branch + pipe) / merge
-```
-
-Named pipelines make this even cleaner:
-
-```python
-process  = pipe / step2 / step3 / step4
-preserve = pipe
-
-result = data > pipe / step1 / (process + preserve) / merge
-```
-
-For capturing values from further back — or accessing them after the pipeline has fired — use `capture` from utils instead.
 
 ---
 
-## Utilities
-
-All utilities live in `miniplumber/utils.py` and are re-exported from `miniplumber` directly.
-
-### Flatten
-
-```python
-pipe // str.split / flatten        # one level: [[1,2],[3,4]] → [1,2,3,4]
-pipe / flatten_deep                # any depth:  [1,[2,[3]]]  → [1,2,3]
-```
+## Utils
 
 ### Sequence
 
 ```python
+pipe / flatten                     # one level: [[1,2],[3,4]] → [1,2,3,4]
+pipe / flatten_deep                # any depth: [1,[2,[3]]]   → [1,2,3]
 pipe / sort()                      # alphabetical
 pipe / sort(key=len, reverse=True) # by length descending
 pipe / unique                      # deduplicate preserving order
-pipe / compact                     # remove falsy values
-pipe / take(3)                     # first 3 elements
-pipe / drop(3)                     # skip first 3
+pipe / take(3)                     # [:3]  first 3 elements
+pipe / take(3, None)               # [3:]  skip first 3
+pipe / take(1, 5)                  # [1:5] elements 1 to 4
+pipe / take(None, None, -1)        # [::-1] reverse
 pipe / chunk(2)                    # [[1,2],[3,4],[5]]
 pipe / window(2)                   # [(1,2),(2,3),(3,4)]
 pipe / group(key)                  # → dict grouped by key function
@@ -418,98 +217,120 @@ users   > pipe // field("age", default=0)  # with fallback
 objects > pipe // attr("created_at")       # extract object attribute
 ```
 
+### Fork utilities
+
+```python
+pipe / twist(2)                            # branch-major → item-major
+pipe / named(["micro", "meso", "macro"])   # flat list → named dict
+```
+
 ### Predicates for `@`
 
 ```python
-pipe @ equals("cat")               # x == value
 pipe @ instance(str)               # isinstance check
-pipe @ between(0, 100)             # range check
-pipe @ nonzero                     # truthy values
-pipe @ matching("ing")             # substring or regex
+pipe @ matching("^[A-Z]")          # substring or regex match
 pipe @ having(status="active")     # dict key/value match
 ```
 
-### Debugging
+### Debug
 
 ```python
-pipe / debug("label")              # print and pass through
-pipe / tap(log_to_file)            # side effect and pass through
+pipe / tap(print)                           # print and pass through
+pipe / tap(lambda x: print("after:", x))   # with label
+pipe / tap(log_to_file)                     # any side effect
+```
 
-captured = {}
-pipe / capture(captured, "words")  # snapshot mid-pipeline value
+---
+
+## Patterns
+
+### Growing state with dicts
+
+For pipelines where each step enriches a shared state, pass a dict and grow it at each step. The convention: every step returns `{**state, "new_key": value}`.
+
+```python
+def load(state):
+    return {**state, "img": cv2.imread(state["path"])}
+
+def preprocess(state):
+    gray = cv2.cvtColor(state["img"], cv2.COLOR_BGR2GRAY)
+    return {**state, "gray": gray}
+
+def segment(state):
+    return {**state, "letters": find_letters(state["gray"])}
+
+{"path": "image.jpg"} > pipe / load / preprocess / segment
+# → {"path": ..., "img": ..., "gray": ..., "letters": [...]}
+```
+
+Each step reads what it needs, adds what it produces, passes everything forward. Nothing is lost. For type safety and autocomplete, use a dataclass with `dataclasses.replace` instead — same pattern, typed.
+
+### Fork → twist → named
+
+A fork produces results in branch-major order: all results of branch A, then all of branch B. `twist` reorders them to item-major: all branch results for item 0, then item 1, and so on. `named` then restores meaning to the flat list.
+
+```python
+energy_before = pipe // sobel_energy
+energy_after  = pipe // (probe_blur / sobel_energy)
+
+bands > pipe / dict.values / list
+      / (energy_before + energy_after)
+      / twist(2)                          # [[e0,pe0], [e1,pe1], [e2,pe2]]
+      // divide                           # [ratio0, ratio1, ratio2]
+      / named(["micro", "meso", "macro"]) # {"micro": r0, "meso": r1, "macro": r2}
+```
+
+The physical model lives in the operator structure — two energy measurements per band, one ratio each.
+
+### Preserving a value across a transformation
+
+Use `pipe` as the identity branch in a fork to carry a value forward untouched:
+
+```python
+result = data > pipe / step1 / (transform + pipe) / merge
+#                                            ↑ value after step1, unchanged
 ```
 
 ### Error handling
 
+Handle errors where they belong — inside the function that knows what failure means, or around the whole pipeline:
+
 ```python
-pipe // safe(0)(int)               # replace failed int() with 0
-pipe / safe([])(parse_json)        # return [] if parse fails
+# inside the function — owns its own error contract
+def parse(x):
+    try:
+        return int(x)
+    except ValueError:
+        return 0
+
+# around the pipeline — one place for the whole flow
+try:
+    result = data > pipe / step1 / step2 / step3
+except ValueError as e:
+    result = fallback
 ```
 
 ---
 
-## OpenCV example
+## Installation
 
-A real-world example showing named pipelines, configurable functions, fork, and batch processing:
-
-```python
-import cv2
-import numpy as np
-from miniplumber import pipe
-
-def blur(k=5):
-    def _blur(img): return cv2.GaussianBlur(img, (k, k), 0)
-    return _blur
-
-def canny(lo, hi):
-    def _canny(img): return cv2.Canny(img, lo, hi)
-    return _canny
-
-def dilate(n=1):
-    kernel = np.ones((3, 3), np.uint8)
-    def _dilate(img): return cv2.dilate(img, kernel, iterations=n)
-    return _dilate
-
-def save(path):
-    def _save(img):
-        cv2.imwrite(path, img)
-        return img
-    return _save
-
-def to_gray(img): return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-def to_bgr(img):  return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-
-# named sub-pipelines
-load    = pipe / cv2.imread
-preproc = pipe / to_gray / blur(5)
-edges   = pipe / canny(50, 150) / dilate(2) / to_bgr
-blurred = pipe / blur(15) / to_bgr
-
-# single image — edge detection
-"photo.jpg" > load / preproc / edges / save("edges.jpg")
-
-# fork — edges vs blurred side by side
-"photo.jpg" > load / preproc / (edges + blurred) / np.hstack / save("compare.jpg")
-
-# batch process a folder
-import glob
-paths = glob.glob("images/*.jpg")
-paths > pipe // (load / preproc / edges / save("out.jpg"))
+```
+pip install miniplumber
 ```
 
----
+```python
+from miniplumber import pipe                              # minimum
+from miniplumber import pipe, flatten, sort, field, tap  # with utilities
+from miniplumber import *                                 # everything
+```
 
-## Comparison with other libraries
+### Package structure
 
-| | **miniplumber** | **pipe** | **sspipe** | **toolz** |
-|---|---|---|---|---|
-| Operators | `>` `/` `//` `@` `+` | `\|` | `\|` | function calls |
-| Precedence-safe | ✅ all same level | ❌ mixes levels | ❌ mixes levels | ✅ no operators |
-| Lazy pipeline object | ✅ | ❌ eager | ❌ eager | ❌ eager |
-| Named composable pipelines | ✅ first class | ❌ | ❌ | partial via `compose` |
-| Map | `//` | `select` | manual | `map` |
-| Filter | `@` | `where` | manual | `filter` |
-| Flatten | `/ flatten` | `traverse` | manual | `/ concat` |
-| Type filter | `@ instance(str)` | ❌ | ❌ | ❌ |
-| Fork / parallel | `+` | ❌ | `tee` (copy only) | `juxt` |
-| Zero dependencies | ✅ | ✅ | ❌ | ❌ |
+```
+miniplumber/
+    __init__.py     # re-exports everything
+    core.py         # Pipeline class and pipe sentinel — zero dependencies
+    utils.py        # flatten, sort, twist, named, field, and friends
+```
+
+`core.py` is self-contained. Copy just that file if you want the pipeline with no utilities.
