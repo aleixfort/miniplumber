@@ -187,3 +187,26 @@ def test_filter_rejects_non_callable():
 def test_fork_rejects_non_pipeline():
     with pytest.raises(TypeError):
         pipe + 42
+
+
+# ── // map polymorphism ───────────────────────────────────────────────────────
+
+def test_map_over_dict_values():
+    result = {"a": 1, "b": 2} > pipe // (lambda x: x * 10)
+    assert result == {"a": 10, "b": 20}
+
+def test_map_over_dict_preserves_keys():
+    result = {"x": "hello", "y": "world"} > pipe // str.upper
+    assert result == {"x": "HELLO", "y": "WORLD"}
+
+def test_map_on_scalar_applies_directly():
+    result = 5 > pipe // (lambda x: x * 2)
+    assert result == 10
+
+def test_map_on_string_applies_directly():
+    result = "hello" > pipe // str.upper
+    assert result == "HELLO"
+
+def test_map_list_behavior_unchanged():
+    result = [1, 2, 3] > pipe // (lambda x: x * 2)
+    assert result == [2, 4, 6]

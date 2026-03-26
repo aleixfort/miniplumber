@@ -10,11 +10,10 @@
 from miniplumber import pipe
 from miniplumber.utils import (
     flatten, flatten_deep,
-    sort, unique, compact, take, drop, chunk, window, group,
+    sort, unique, keep, twist, named, chunk, window, group,
     field, attr,
-    equals, instance, between, nonzero, matching, having,
-    debug, tap, capture,
-    safe,
+    matching, having,
+    tap,
 )
 
 
@@ -69,37 +68,62 @@ def test_unique_empty():
     assert unique([]) == []
 
 
-# ── Compact ───────────────────────────────────────────────────────────────────
+# ── Keep ──────────────────────────────────────────────────────────────────────
 
-def test_compact_removes_falsy():
-    assert compact([1, None, 0, "hello", "", False, []]) == [1, "hello"]
+def test_keep_first_n():
+    assert keep(3)([1, 2, 3, 4, 5]) == [1, 2, 3]
 
-def test_compact_all_truthy():
-    assert compact([1, 2, 3]) == [1, 2, 3]
+def test_keep_more_than_length():
+    assert keep(10)([1, 2, 3]) == [1, 2, 3]
 
-def test_compact_all_falsy():
-    assert compact([None, 0, False]) == []
+def test_keep_zero():
+    assert keep(0)([1, 2, 3]) == []
+
+def test_keep_skip_first_n():
+    assert keep(2, None)([1, 2, 3, 4, 5]) == [3, 4, 5]
+
+def test_keep_skip_more_than_length():
+    assert keep(10, None)([1, 2, 3]) == []
+
+def test_keep_slice_range():
+    assert keep(1, 4)([1, 2, 3, 4, 5]) == [2, 3, 4]
+
+def test_keep_step():
+    assert keep(None, None, 2)([1, 2, 3, 4, 5]) == [1, 3, 5]
+
+def test_keep_reverse():
+    assert keep(None, None, -1)([1, 2, 3]) == [3, 2, 1]
 
 
-# ── Take / Drop ───────────────────────────────────────────────────────────────
+# ── Twist ─────────────────────────────────────────────────────────────────────
 
-def test_take_first_n():
-    assert take(3)([1, 2, 3, 4, 5]) == [1, 2, 3]
+def test_twist_two_branches():
+    assert twist([[1, 2, 3], [4, 5, 6]]) == [[1, 4], [2, 5], [3, 6]]
 
-def test_take_more_than_length():
-    assert take(10)([1, 2, 3]) == [1, 2, 3]
+def test_twist_three_branches():
+    assert twist([[1, 2], [3, 4], [5, 6]]) == [[1, 3, 5], [2, 4, 6]]
 
-def test_take_zero():
-    assert take(0)([1, 2, 3]) == []
+def test_twist_in_pipeline():
+    result = [1, 2, 3] > pipe / (pipe / list + pipe / list) / twist
+    assert result == [[1, 1], [2, 2], [3, 3]]
 
-def test_drop_first_n():
-    assert drop(2)([1, 2, 3, 4, 5]) == [3, 4, 5]
+def test_twist_then_flatten():
+    result = twist([[1, 2], [3, 4]])
+    assert flatten(result) == [1, 3, 2, 4]
 
-def test_drop_more_than_length():
-    assert drop(10)([1, 2, 3]) == []
 
-def test_drop_zero():
-    assert drop(0)([1, 2, 3]) == [1, 2, 3]
+# ── Named ─────────────────────────────────────────────────────────────────────
+
+def test_named_basic():
+    assert named(["a", "b", "c"])([1, 2, 3]) == {"a": 1, "b": 2, "c": 3}
+
+def test_named_in_pipeline():
+    result = [0.73, 0.61, 0.44] > pipe / named(["micro", "meso", "macro"])
+    assert result == {"micro": 0.73, "meso": 0.61, "macro": 0.44}
+
+def test_named_after_fork():
+    result = [1, 2, 3] > pipe / (pipe / min + pipe / max) / named(["lo", "hi"])
+    assert result == {"lo": 1, "hi": 3}
 
 
 # ── Chunk / Window ────────────────────────────────────────────────────────────
@@ -164,44 +188,6 @@ def test_attr_missing_returns_default():
 
 # ── Predicates ────────────────────────────────────────────────────────────────
 
-def test_equals_match():
-    assert equals("cat")("cat") is True
-
-def test_equals_no_match():
-    assert equals("cat")("dog") is False
-
-def test_equals_in_pipeline():
-    result = ["cat", "dog", "cat"] > pipe @ equals("cat")
-    assert result == ["cat", "cat"]
-
-def test_instance_match():
-    assert instance(str)("hello") is True
-
-def test_instance_no_match():
-    assert instance(str)(42) is False
-
-def test_instance_in_pipeline():
-    result = [1, "hello", 2, "world"] > pipe @ instance(str)
-    assert result == ["hello", "world"]
-
-def test_between_inclusive():
-    assert between(1, 5)(1) is True
-    assert between(1, 5)(5) is True
-    assert between(1, 5)(3) is True
-
-def test_between_out_of_range():
-    assert between(1, 5)(0) is False
-    assert between(1, 5)(6) is False
-
-def test_nonzero_truthy():
-    assert nonzero(1) is True
-    assert nonzero("hello") is True
-
-def test_nonzero_falsy():
-    assert nonzero(0) is False
-    assert nonzero("") is False
-    assert nonzero(None) is False
-
 def test_matching_substring():
     pred = matching("ing")
     assert pred("running") is True
@@ -224,22 +210,7 @@ def test_having_multiple_kwargs():
     assert pred({"status": "active", "role": "user"}) is False
 
 
-# ── Debugging ─────────────────────────────────────────────────────────────────
-
-def test_debug_passes_value_through():
-    result = [1, 2, 3] > pipe / debug("test")
-    assert result == [1, 2, 3]
-
-def test_debug_prints_label(capsys):
-    [1, 2, 3] > pipe / debug("mylist")
-    captured = capsys.readouterr()
-    assert "mylist" in captured.out
-    assert "[1, 2, 3]" in captured.out
-
-def test_debug_no_label(capsys):
-    [1, 2, 3] > pipe / debug()
-    captured = capsys.readouterr()
-    assert "[1, 2, 3]" in captured.out
+# ── Tap ───────────────────────────────────────────────────────────────────────
 
 def test_tap_calls_func_as_side_effect():
     calls = []
@@ -250,33 +221,3 @@ def test_tap_calls_func_as_side_effect():
 def test_tap_passes_value_unchanged():
     result = "hello" > pipe / tap(lambda x: None)
     assert result == "hello"
-
-def test_capture_snapshots_value():
-    store = {}
-    result = [1, 2, 3] > pipe / capture(store, "nums") / len
-    assert store["nums"] == [1, 2, 3]
-    assert result == 3
-
-def test_capture_does_not_alter_value():
-    store = {}
-    result = "hello" > pipe / capture(store, "word")
-    assert result == "hello"
-
-
-# ── Safe ──────────────────────────────────────────────────────────────────────
-
-def test_safe_returns_fallback_on_exception():
-    guarded = safe(0)(int)
-    assert guarded("oops") == 0
-
-def test_safe_passes_through_on_success():
-    guarded = safe(0)(int)
-    assert guarded("42") == 42
-
-def test_safe_in_pipeline():
-    result = ["1", "2", "oops", "4"] > pipe // safe(0)(int)
-    assert result == [1, 2, 0, 4]
-
-def test_safe_preserves_function_name():
-    guarded = safe(0)(int)
-    assert guarded.__name__ == "int"

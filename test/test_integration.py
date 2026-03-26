@@ -12,10 +12,6 @@ from miniplumber.utils import (
     sort,
     having,
     field,
-    instance,
-    debug,
-    capture,
-    safe,
     group)
 
 # ── Classic map / flatten / filter / reduce ───────────────────────────────────
@@ -163,36 +159,13 @@ def test_filter_and_extract_from_records():
 
 def test_type_filter_on_mixed_list():
     mixed = [1, "hello", 2, None, "world", 3, True]
-    strings = mixed > pipe @ instance(str)
-    numbers = mixed > pipe @ instance(int)
+    strings = mixed > pipe @ (lambda x: isinstance(x, str))
+    numbers = mixed > pipe @ (lambda x: isinstance(x, int))
     assert strings == ["hello", "world"]
     assert numbers == [1, 2, 3, True]
 
 
-# ── Debugging mid-pipeline ────────────────────────────────────────────────────
-
-def test_debug_does_not_affect_result():
-    result = [1, 2, 3] > pipe / debug("nums") / sum
-    assert result == 6
-
-def test_capture_mid_pipeline():
-    store = {}
-    result = ["hello world", "foo bar"] > (
-        pipe
-        // str.split
-        / capture(store, "split")
-        / flatten
-        // str.upper
-    )
-    assert store["split"] == [["hello", "world"], ["foo", "bar"]]
-    assert result == ["HELLO", "WORLD", "FOO", "BAR"]
-
-
 # ── Error handling ────────────────────────────────────────────────────────────
-
-def test_safe_in_mixed_list_pipeline():
-    result = ["1", "2", "oops", "4"] > pipe // safe(0)(int)
-    assert result == [1, 2, 0, 4]
 
 def test_error_propagates_with_context():
     with pytest.raises(RuntimeError) as exc_info:
